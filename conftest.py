@@ -31,7 +31,7 @@ def default_test_database_url() -> str:
 # Respect an explicit URL (CI may point at PostgreSQL); otherwise isolate.
 os.environ.setdefault("RELAY_DATABASE_URL", default_test_database_url())
 
-from database import DATABASE_URL  # noqa: E402  (must follow the default above)
+from database import DATABASE_URL, IS_SQLITE, engine  # noqa: E402  (must follow the default above)
 
 # The fixtures below drop and recreate every table, so refuse to start at all
 # if that would destroy the development database.
@@ -39,4 +39,12 @@ if Path(DATABASE_URL.split("?", 1)[0]).name == DEV_DATABASE_FILENAME:
     raise RuntimeError(
         f"Tests drop and recreate every table; refusing to run against {DATABASE_URL!r}. "
         "Unset RELAY_DATABASE_URL to use the scratch default, or point it at a throwaway database."
+    )
+
+# A server database has no telltale filename, so require the name to say it is
+# disposable; this keeps the tests off the compose stack's "relay" database.
+if not IS_SQLITE and "test" not in (engine.url.database or ""):
+    raise RuntimeError(
+        f"Tests drop and recreate every table; refusing to run against database {engine.url.database!r}. "
+        "Point RELAY_DATABASE_URL at a throwaway database whose name contains 'test'."
     )

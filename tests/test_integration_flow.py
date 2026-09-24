@@ -41,7 +41,8 @@ def register(client: TestClient, name: str, description: str) -> tuple[dict, dic
 def test_integration_targets_relay_database_url_not_the_dev_database():
     assert DATABASE_URL == os.environ["RELAY_DATABASE_URL"]
     assert not DATABASE_URL.endswith("/agent-relay.db")
-    assert str(engine.url) == DATABASE_URL
+    # str(URL) masks any password as "***"; render it in full to compare.
+    assert engine.url.render_as_string(hide_password=False) == DATABASE_URL
 
 
 def test_alice_sends_bob_claims_and_completes_and_alice_reads_the_result():
