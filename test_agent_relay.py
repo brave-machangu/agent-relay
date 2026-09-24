@@ -8,13 +8,9 @@ not from a Python lock.
 
 from __future__ import annotations
 
-import os
-
-# Default to a scratch DB so `pytest` never resets the dev server's
-# `./agent-relay.db`. Respect an explicit RELAY_DATABASE_URL/DATABASE_URL
-# (e.g. CI pointing at PostgreSQL), but otherwise isolate tests.
-os.environ.setdefault("RELAY_DATABASE_URL", "sqlite:////tmp/agent-relay-test.db")
-
+# `conftest.py` points RELAY_DATABASE_URL at a scratch database in the
+# platform temp directory before this module is imported, and refuses to run
+# at all against the dev server's `./agent-relay.db`.
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
