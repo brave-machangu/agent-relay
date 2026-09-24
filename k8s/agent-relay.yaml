@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-relay
+  labels:
+    app.kubernetes.io/name: agent-relay
+    app.kubernetes.io/part-of: agent-relay
+spec:
+  # Two replicas share one Postgres; claims stay exclusive via FOR UPDATE SKIP LOCKED.
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: agent-relay
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agent-relay
+        app.kubernetes.io/part-of: agent-relay
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      initContainers:
+        # The app creates its tables at import time, so hold it until Postgres
+        # accepts connections instead of letting it crash-loop.  -U is required:
+        # uid 1000 has no passwd entry here, and without it pg_isready exits 3
+        # ("no attempt") forever.
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: agent-relay-db
+                  key: POSTGRES_USER
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: agent-relay-db
+                  key: POSTGRES_DB
+          command:
+            - sh
+            - -c
+            - until pg_isready -h postgres -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do echo waiting for postgres; sleep 2; done
+      containers:
+        - name: agent-relay
+          image: agent-relay:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: RELAY_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: agent-relay-db
+                  key: RELAY_DATABASE_URL
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-relay
+  labels:
+    app.kubernetes.io/name: agent-relay
+    app.kubernetes.io/part-of: agent-relay
+spec:
+  selector:
+    app.kubernetes.io/name: agent-relay
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
